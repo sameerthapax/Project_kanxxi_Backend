@@ -1,0 +1,17 @@
+Flask==3.0.3
+flask-cors==4.0.1
+
+# Torch (CPU is fine for your demo)
+torch>=2.1.0
+
+# Coqui TTS + its dependency ecosystem needs NumPy < 2.0 (numba compatibility)
+numpy==1.26.4
+scipy>=1.11.0
+soundfile>=0.12.1
+
+# Coqui TTS
+TTS
+
+# Optional text utils (Coqui may pull these anyway; safe to keep)
+unidecode>=1.3.8
+inflect>=7.0.0
