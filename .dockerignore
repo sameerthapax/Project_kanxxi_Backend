@@ -1,14 +1,48 @@
-.venv
-__pycache__
-*.pyc
-.git
+# Git
+.git/
 .gitignore
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Env / secrets
 .env
-.DS_Store
-node_modules
-dist
-build
-models
-outputs
+*.pem
+*.key
+
+# Heavy assets (CRITICAL)
+models/
+outputs/
 *.pth
 *.pt
+*.ckpt
+*.bin
+*.onnx
+*.wav
+*.mp3
+*.flac
+*.tar
+*.tar.gz
+*.zip
+
+# OS / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# Node
+node_modules/
+dist/
+build/
+
+# Caches
+.cache/
+pip-wheel-metadata/
