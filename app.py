@@ -1,9 +1,10 @@
 import os
 import hashlib
+import time
 import numpy as np
-from flask import Flask, request, send_file, jsonify
+import soundfile as sf
+from flask import Flask, request, send_file, jsonify, make_response
 from flask_cors import CORS
-from scipy.io.wavfile import write as wavwrite
 
 from tts.coqui_tts import CoquiTacotron2TTS
 
@@ -13,9 +14,13 @@ OUTPUTS = os.path.join(BASE, "outputs")
 os.makedirs(OUTPUTS, exist_ok=True)
 
 MAX_CHARS = int(os.getenv("MAX_CHARS", "300"))
+PORT = int(os.getenv("PORT", "4000"))
+ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "https://kanxxi.com")
+RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "20"))
+RATE_LIMIT_WINDOW_SEC = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "60"))
 
 app = Flask(__name__)
-CORS(app, resources={r"/api/*": {"origins": "*"}})
+CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGIN}})
 
 tts_engine = CoquiTacotron2TTS(
     tts_checkpoint=os.path.join(MODELS, "best_model.pth"),
@@ -23,12 +28,47 @@ tts_engine = CoquiTacotron2TTS(
     device="cpu",
 )
 
+_rate_state = {}
+
+def _client_ip():
+    forwarded = request.headers.get("X-Forwarded-For", "")
+    if forwarded:
+        return forwarded.split(",")[0].strip()
+    return request.remote_addr or "unknown"
+
+def _origin_allowed():
+    origin = request.headers.get("Origin", "")
+    return origin == ALLOWED_ORIGIN
+
+def _rate_limited(ip):
+    now = time.time()
+    window_start, count = _rate_state.get(ip, (now, 0))
+    if now - window_start >= RATE_LIMIT_WINDOW_SEC:
+        window_start = now
+        count = 0
+    count += 1
+    _rate_state[ip] = (window_start, count)
+    if count > RATE_LIMIT_MAX:
+        retry_after = int(RATE_LIMIT_WINDOW_SEC - (now - window_start))
+        return True, max(retry_after, 0)
+    return False, 0
+
 @app.get("/api/health")
 def health():
     return jsonify({"ok": True, "sample_rate": tts_engine.sample_rate})
 
 @app.post("/api/tts")
 def tts():
+    if not _origin_allowed():
+        return jsonify({"error": "origin_not_allowed"}), 403
+
+    ip = _client_ip()
+    limited, retry_after = _rate_limited(ip)
+    if limited:
+        resp = make_response(jsonify({"error": "rate_limited"}), 429)
+        resp.headers["Retry-After"] = str(retry_after)
+        return resp
+
     data = request.get_json(silent=True) or {}
     text = str(data.get("text", "")).strip()
 
@@ -41,13 +81,20 @@ def tts():
     out_path = os.path.join(OUTPUTS, f"{key}.wav")
 
     if not os.path.exists(out_path):
-        wav = tts_engine.tts_to_wav(text)  # float32 -1..1
-        wav = np.clip(wav, -1.0, 1.0)
-        wav_i16 = (wav * 32767.0).astype(np.int16)
+        wav = tts_engine.tts_to_wav(text).astype(np.float32)
 
-        wavwrite(out_path, tts_engine.sample_rate, wav_i16)
+        # Normalize to avoid clipping distortion (your wav can exceed [-1, 1])
+        peak = float(np.max(np.abs(wav)))
+        if peak > 0:
+            wav = wav / peak
+
+        # Small headroom to avoid hitting full scale
+        wav = wav * 0.98
+
+        # Write 16-bit PCM WAV
+        sf.write(out_path, wav, tts_engine.sample_rate, subtype="PCM_16")
 
     return send_file(out_path, mimetype="audio/wav")
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=4000, debug=True)
+    app.run(host="0.0.0.0", port=PORT, debug=True)
