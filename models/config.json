@@ -164,7 +164,7 @@
     "stopnet": true,
     "separate_stopnet": true,
     "stopnet_pos_weight": 0.8,
-    "max_decoder_steps": 20000,
+    "max_decoder_steps": 1000,
     "encoder_in_features": 512,
     "decoder_in_features": 512,
     "decoder_output_dim": 80,

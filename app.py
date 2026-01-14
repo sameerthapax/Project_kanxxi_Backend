@@ -15,7 +15,7 @@ os.makedirs(OUTPUTS, exist_ok=True)
 
 MAX_CHARS = int(os.getenv("MAX_CHARS", "300"))
 PORT = int(os.getenv("PORT", "4000"))
-ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "https://kanxxi.com")
+ALLOWED_ORIGIN = os.getenv("ALLOWED_ORIGIN", "http://localhost:5173")
 RATE_LIMIT_MAX = int(os.getenv("RATE_LIMIT_MAX", "20"))
 RATE_LIMIT_WINDOW_SEC = int(os.getenv("RATE_LIMIT_WINDOW_SEC", "60"))
 
@@ -23,7 +23,7 @@ app = Flask(__name__)
 CORS(app, resources={r"/api/*": {"origins": ALLOWED_ORIGIN}})
 
 tts_engine = CoquiTacotron2TTS(
-    tts_checkpoint=os.path.join(MODELS, "best_model.pth"),
+    tts_checkpoint=os.path.join(MODELS, "best_model_5338.pth"),
     tts_config_path=os.path.join(MODELS, "config.json"),
     device="cpu",
 )

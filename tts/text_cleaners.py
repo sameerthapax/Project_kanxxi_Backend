@@ -7,28 +7,28 @@ def nepali_cleaners(text: str, add_sentence_end: bool = False) -> str:
     # 1) Unicode normalization
     text = unicodedata.normalize("NFKC", text)
 
-    # 2) Replace smart quotes/dashes
+    # 2) Character normalization (rare chars → common equivalents)
+    text = text.replace("ॠ", "ऋ")
+    text = text.replace("॥", "।")
+
+    # 3) Replace smart quotes/dashes
     text = (text
             .replace("‘", "'").replace("’", "'")
             .replace("“", '"').replace("”", '"')
             .replace("–", "-").replace("—", "-"))
 
-    # 3) Remove zero-width/non-printing characters
+    # 4) Remove zero-width/non-printing characters
     for ch in ZERO_WIDTH:
         text = text.replace(ch, "")
 
-    # 4) Lowercase ASCII letters only (leave Nepali intact)
+    # 5) Lowercase ASCII letters only (leave Nepali intact)
     text = "".join(c.lower() if (c.isascii() and c.isalpha()) else c for c in text)
 
-    # 5) Collapse whitespace
+    # 6) Collapse whitespace
     text = re.sub(r"\s+", " ", text).strip()
 
-    # 6) Normalize sentence-ending punctuation (optional)
-    # Convert '.' to danda if you want consistent Nepali endings:
-    # text = re.sub(r"\.(\s*)$", "।\\1", text)
-
-    # Only append if requested and if it doesn't already end properly
-    if add_sentence_end and text and not re.search(r"[।॥.?!]$", text):
+    # 7) Only append danda if requested
+    if add_sentence_end and text and not re.search(r"[।.?!]$", text):
         text += "।"
 
     return text
