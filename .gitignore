@@ -139,3 +139,7 @@ vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 models
 *.pth
+*.wav
+.venv
+.idea
+node_modules
