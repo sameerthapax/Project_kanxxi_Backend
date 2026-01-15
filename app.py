@@ -126,7 +126,7 @@ def tts_english():
         return error
 
     translator = get_translator()
-    translated = translator.translate_en_to_ne(text).text.strip()
+    translated = translator.translate_en_to_ne(text,max_new_tokens=96,num_beams=1).text.strip()
     if not translated:
         return jsonify({"error": "translation_failed"}), 500
 
