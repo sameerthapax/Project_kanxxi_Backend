@@ -7,6 +7,7 @@ from flask import Flask, request, send_file, jsonify, make_response
 from flask_cors import CORS
 
 from tts.coqui_tts import CoquiTacotron2TTS
+from services.translate_nllb import get_translator
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 MODELS = os.path.join(BASE, "models")
@@ -53,6 +54,33 @@ def _rate_limited(ip):
         return True, max(retry_after, 0)
     return False, 0
 
+def _validate_text(text):
+    if not text:
+        return jsonify({"error": "missing_text"}), 400
+    if len(text) > MAX_CHARS:
+        return jsonify({"error": "text_too_long", "max_chars": MAX_CHARS}), 400
+    return None
+
+def _synthesize_to_file(text):
+    key = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
+    out_path = os.path.join(OUTPUTS, f"{key}.wav")
+
+    if not os.path.exists(out_path):
+        wav = tts_engine.tts_to_wav(text).astype(np.float32)
+
+        # Normalize to avoid clipping distortion (your wav can exceed [-1, 1])
+        peak = float(np.max(np.abs(wav)))
+        if peak > 0:
+            wav = wav / peak
+
+        # Small headroom to avoid hitting full scale
+        wav = wav * 0.98
+
+        # Write 16-bit PCM WAV
+        sf.write(out_path, wav, tts_engine.sample_rate, subtype="PCM_16")
+
+    return send_file(out_path, mimetype="audio/wav")
+
 @app.get("/api/health")
 def health():
     return jsonify({"ok": True, "sample_rate": tts_engine.sample_rate})
@@ -72,29 +100,41 @@ def tts():
     data = request.get_json(silent=True) or {}
     text = str(data.get("text", "")).strip()
 
-    if not text:
-        return jsonify({"error": "missing_text"}), 400
-    if len(text) > MAX_CHARS:
-        return jsonify({"error": "text_too_long", "max_chars": MAX_CHARS}), 400
+    error = _validate_text(text)
+    if error:
+        return error
 
-    key = hashlib.sha256(text.encode("utf-8")).hexdigest()[:16]
-    out_path = os.path.join(OUTPUTS, f"{key}.wav")
+    return _synthesize_to_file(text)
 
-    if not os.path.exists(out_path):
-        wav = tts_engine.tts_to_wav(text).astype(np.float32)
+@app.post("/api/tts-english")
+def tts_english():
+    if not _origin_allowed():
+        return jsonify({"error": "origin_not_allowed"}), 403
 
-        # Normalize to avoid clipping distortion (your wav can exceed [-1, 1])
-        peak = float(np.max(np.abs(wav)))
-        if peak > 0:
-            wav = wav / peak
+    ip = _client_ip()
+    limited, retry_after = _rate_limited(ip)
+    if limited:
+        resp = make_response(jsonify({"error": "rate_limited"}), 429)
+        resp.headers["Retry-After"] = str(retry_after)
+        return resp
 
-        # Small headroom to avoid hitting full scale
-        wav = wav * 0.98
+    data = request.get_json(silent=True) or {}
+    text = str(data.get("text", "")).strip()
 
-        # Write 16-bit PCM WAV
-        sf.write(out_path, wav, tts_engine.sample_rate, subtype="PCM_16")
+    error = _validate_text(text)
+    if error:
+        return error
 
-    return send_file(out_path, mimetype="audio/wav")
+    translator = get_translator()
+    translated = translator.translate_en_to_ne(text).text.strip()
+    if not translated:
+        return jsonify({"error": "translation_failed"}), 500
+
+    error = _validate_text(translated)
+    if error:
+        return error
+
+    return _synthesize_to_file(translated)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=PORT, debug=False)
